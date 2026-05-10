@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Playfair+Display:wght@700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --green-dark: #84B179;
+  --green-mid: #A2CB8B;
+  --green-light: #C7EABB;
+  --green-pale: #E8F5BD;
+  --pink-warm: #FFF7CD;
+  --pink-peach: #FDC3A1;
+  --pink-salmon: #FB9B8F;
+  --pink-rose: #F57799;
+  --text-dark: #2d3a2e;
+  --text-mid: #5a7060;
+  --text-light: #8aaa90;
+  --bg-main: #f0f8ef;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-dark);
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--green-light); border-radius: 4px; }
+
+/* Form focus styles */
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--green-dark);
+  outline-offset: -2px;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 16px;
+}
+
+.btn-primary {
+  background: var(--green-dark);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: #74a069; }
+
+.btn-outline {
+  background: transparent;
+  color: var(--green-dark);
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--green-dark);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-outline:hover { background: var(--green-pale); }
+
+.btn-danger {
+  background: #FB9B8F;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.form-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #dde8da;
+  border-radius: 9px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text-dark);
+  background: #fff;
+}
+
+.progress-bar {
+  height: 7px;
+  border-radius: 20px;
+  background: #eef5ec;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 20px;
+  transition: width 0.4s ease;
+}
