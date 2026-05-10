@@ -58,8 +58,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log("OCR Raw Text:\n", extractedText);
-
     const parsed = parseReceiptText(extractedText);
 
     return NextResponse.json({ success: true, rawText: extractedText, parsed });
@@ -72,17 +70,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-const VALID_TYPES       = ["expense", "income"] as const;
-const VALID_CATEGORIES  = [
+const VALID_CATEGORIES = [
   "Groceries", "Shopping", "Dining", "Entertainment",
   "Transport", "Health", "Utilities", "Other",
 ] as const;
 
-type TxType     = typeof VALID_TYPES[number];
+type TxType     = "expense" | "income";
 type TxCategory = typeof VALID_CATEGORIES[number];
 
 interface ParsedReceipt {
@@ -94,39 +87,28 @@ interface ParsedReceipt {
   notes:       string | null;
 }
 
-// Keywords that map raw text → our categories
 const CATEGORY_KEYWORDS: Record<TxCategory, string[]> = {
   Groceries:     ["grocery","groceries","supermarket","mart","carrefour","imtiaz","metro","hyperstar","food","vegetable","fruit","produce","bakery","dairy"],
   Dining:        ["restaurant","cafe","coffee","pizza","burger","biryani","dine","dining","kitchen","grill","eat","bbq","shawarma","mcdonalds","kfc","subway","starbucks","tea"],
   Transport:     ["uber","careem","taxi","cab","petrol","fuel","gas station","parking","toll","fare","ride","transport","lyft","bus","train","metro"],
   Shopping:      ["mall","store","shop","clothing","fashion","h&m","zara","amazon","electronics","retail","boutique","outlet","purchase"],
   Health:        ["pharmacy","hospital","clinic","doctor","medical","medicine","lab","test","health","dental","optical","chemist","drugstore"],
-  Entertainment: ["cinema","netflix","movie","game","sport","park","ticket","concert","event","netflix","disney","youtube","streaming"],
+  Entertainment: ["cinema","netflix","movie","game","sport","park","ticket","concert","event","disney","youtube","streaming"],
   Utilities:     ["electricity","internet","phone","bill","water","gas","utility","utilities","telecom","wifi","broadband","ptcl","sui"],
   Other:         [],
 };
 
-// Keywords that hint at income
 const INCOME_KEYWORDS = [
   "salary","income","payment received","credit","deposit","refund",
   "reimbursement","transfer in","received","earning",
 ];
 
-// ─────────────────────────────────────────────
-// Detect if receipt is structured (labeled fields) or messy (raw)
-// ─────────────────────────────────────────────
 function isStructuredReceipt(text: string): boolean {
   const lower = text.toLowerCase();
-  // If it has at least 2 of these explicit labels it's structured
-  const structuredLabels = ["amount","description","category","type","notes","date"];
-  const found = structuredLabels.filter((l) => lower.includes(l));
-  return found.length >= 2;
+  const labels = ["amount","description","category","type","notes","date"];
+  return labels.filter((l) => lower.includes(l)).length >= 2;
 }
 
-// ─────────────────────────────────────────────
-// STRATEGY 1: Structured receipt parser
-// Reads labeled fields line by line e.g. "AMOUNT\n$22.75"
-// ─────────────────────────────────────────────
 function parseStructured(text: string): ParsedReceipt {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
@@ -152,37 +134,26 @@ function parseStructured(text: string): ParsedReceipt {
     }
 
     if (label === "description") {
-      // grab up to 2 lines as description (avoid picking up another label)
       const parts: string[] = [];
       let j = i + 1;
       while (j < lines.length && j <= i + 2) {
-        const candidate = lines[j].toLowerCase().replace(/[:\s]/g, "");
-        const isLabel = ["type","category","notes","amount","date","recurring"].includes(candidate);
-        if (isLabel) break;
+        const c = lines[j].toLowerCase().replace(/[:\s]/g, "");
+        if (["type","category","notes","amount","date","recurring"].includes(c)) break;
         parts.push(lines[j]);
         j++;
       }
       if (parts.length) { description = parts.join(" "); i = j - 1; }
     }
 
-    if (label === "type") {
-      rawType = next.toLowerCase().trim();
-      i++;
-    }
-
-    if (label === "category") {
-      rawCategory = next.trim();
-      i++;
-    }
+    if (label === "type")     { rawType = next.toLowerCase().trim(); i++; }
+    if (label === "category") { rawCategory = next.trim(); i++; }
 
     if (label === "notes" || label === "notes(optional)") {
       const parts: string[] = [];
       let j = i + 1;
       while (j < lines.length && j <= i + 3) {
-        const candidate = lines[j].toLowerCase().replace(/[:\s]/g, "");
-        const isLabel = ["type","category","description","amount","date"].includes(candidate);
-        if (isLabel) break;
-        // Stop at the summary box (lines that repeat Amount: $xx)
+        const c = lines[j].toLowerCase().replace(/[:\s]/g, "");
+        if (["type","category","description","amount","date"].includes(c)) break;
         if (/^amount:/i.test(lines[j])) break;
         parts.push(lines[j]);
         j++;
@@ -190,100 +161,72 @@ function parseStructured(text: string): ParsedReceipt {
       if (parts.length) { notes = parts.join(" "); i = j - 1; }
     }
 
-    // Also catch inline patterns like "Amount: $22.75" inside summary boxes
+    // Inline summary box patterns
     const inlineAmount = lines[i].match(/^amount:\s*[\$£€Rs]?([\d,]+\.?\d{0,2})/i);
-    if (inlineAmount && !amount) {
-      amount = parseFloat(inlineAmount[1].replace(",", ""));
-    }
+    if (inlineAmount && !amount) amount = parseFloat(inlineAmount[1].replace(",", ""));
 
     const inlineDate = lines[i].match(/^date:\s*(.+)/i);
-    if (inlineDate && !date) {
-      date = tryParseDate(inlineDate[1].trim());
-    }
+    if (inlineDate && !date) date = tryParseDate(inlineDate[1].trim());
 
     const inlineDesc = lines[i].match(/^description:\s*(.+)/i);
-    if (inlineDesc && !description) {
-      description = inlineDesc[1].trim();
-    }
+    if (inlineDesc && !description) description = inlineDesc[1].trim();
 
     const inlineType = lines[i].match(/^type:\s*(.+)/i);
-    if (inlineType && !rawType) {
-      rawType = inlineType[1].trim().toLowerCase();
-    }
+    if (inlineType && !rawType) rawType = inlineType[1].trim().toLowerCase();
 
     const inlineCat = lines[i].match(/^category:\s*(.+)/i);
-    if (inlineCat && !rawCategory) {
-      rawCategory = inlineCat[1].trim();
-    }
+    if (inlineCat && !rawCategory) rawCategory = inlineCat[1].trim();
 
     const inlineNotes = lines[i].match(/^notes:\s*(.+)/i);
-    if (inlineNotes && !notes) {
-      notes = inlineNotes[1].trim();
-    }
+    if (inlineNotes && !notes) notes = inlineNotes[1].trim();
   }
 
-  // Resolve type
   const type: TxType = rawType === "income" ? "income" : "expense";
-
-  // Resolve category — first try exact match, then keyword match on all text
   const category = resolveCategory(rawCategory, text);
-
   return { amount, date, description, type, category, notes };
 }
 
-// ─────────────────────────────────────────────
-// STRATEGY 2: Messy receipt parser
-// Works on unstructured grocery-slip style text
-// ─────────────────────────────────────────────
 function parseMessy(text: string): ParsedReceipt {
-  // ── Amount: look for TOTAL / GRAND TOTAL / largest currency value
   let amount: number | null = null;
-  const amountPatterns = [
+
+  const totalPatterns = [
     /(?:grand\s*total|total\s*amount|net\s*total|total)[^\d]*?([\d,]+\.?\d{0,2})/i,
     /(?:subtotal|sub-total)[^\d]*?([\d,]+\.?\d{0,2})/i,
-    /[\$£€Rs]\s*([\d,]+\.\d{2})/g,
     /([\d,]+\.\d{2})\s*(?:USD|PKR|EUR|GBP)/i,
   ];
 
-  for (const pattern of amountPatterns) {
-    if (pattern instanceof RegExp && pattern.flags.includes("g")) {
-      // pick the largest currency value found
-      const matches = [...text.matchAll(pattern)];
-      if (matches.length) {
-        const values = matches.map((m) => parseFloat(m[1].replace(",", "")));
-        amount = Math.max(...values);
-        break;
-      }
-    } else {
-      const match = text.match(pattern as RegExp);
-      if (match) { amount = parseFloat(match[1].replace(",", "")); break; }
-    }
+  for (const pattern of totalPatterns) {
+    const match = text.match(pattern);
+    if (match) { amount = parseFloat(match[1].replace(",", "")); break; }
   }
 
-  // ── Date
-  const date = extractDate(text);
+  // FIX: use exec loop instead of matchAll spread to avoid TS downlevelIteration error
+  if (!amount) {
+    const currencyPattern = /[\$£€Rs]\s*([\d,]+\.\d{2})/g;
+    const values: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = currencyPattern.exec(text)) !== null) {
+      values.push(parseFloat(m[1].replace(",", "")));
+    }
+    if (values.length > 0) amount = Math.max(...values);
+  }
 
-  // ── Merchant / description — first meaningful line that isn't a number
+  const date = tryParseDate(text);
+
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   let description: string | null = null;
   for (const line of lines) {
-    // skip lines that are purely numbers, currency, or very short
     if (/^[\d\s\$£€.,\-:\/]+$/.test(line)) continue;
     if (line.length < 3) continue;
-    // skip common receipt noise
     if (/^(receipt|invoice|bill|tax|vat|total|subtotal|thank|welcome|date|time|cashier|ref|no\.|#)/i.test(line)) continue;
     description = line;
     break;
   }
 
-  // ── Type: income hints
   const lower = text.toLowerCase();
   const type: TxType = INCOME_KEYWORDS.some((k) => lower.includes(k)) ? "income" : "expense";
-
-  // ── Category from keywords
   const category = resolveCategory(null, text);
 
-  // ── Notes: look for any "note" / "memo" / "remark" line
   let notes: string | null = null;
   const notesMatch = text.match(/(?:note|memo|remark|comment)[s]?[:\-]?\s*(.+)/i);
   if (notesMatch) notes = notesMatch[1].trim();
@@ -291,33 +234,24 @@ function parseMessy(text: string): ParsedReceipt {
   return { amount, date, description, type, category, notes };
 }
 
-// ─────────────────────────────────────────────
-// Main entry — picks strategy automatically
-// ─────────────────────────────────────────────
 function parseReceiptText(text: string): ParsedReceipt {
   if (isStructuredReceipt(text)) {
-    const result = parseStructured(text);
-    // Fill any gaps using messy parser as fallback
+    const result   = parseStructured(text);
     const fallback = parseMessy(text);
     return {
       amount:      result.amount      ?? fallback.amount,
       date:        result.date        ?? fallback.date,
       description: result.description ?? fallback.description,
-      type:        result.type        ?? fallback.type,
-      category:    result.category    !== "Other" ? result.category : fallback.category,
+      type:        result.type,
+      category:    result.category !== "Other" ? result.category : fallback.category,
       notes:       result.notes       ?? fallback.notes,
     };
   }
   return parseMessy(text);
 }
 
-// ─────────────────────────────────────────────
-// Shared helpers
-// ─────────────────────────────────────────────
-
 function tryParseDate(str: string): string | null {
   if (!str) return null;
-  // Common formats: MM/DD/YYYY, DD-MM-YYYY, YYYY-MM-DD, "Jan 5, 2026", etc.
   const patterns = [
     /(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})/,
     /(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/,
@@ -336,25 +270,17 @@ function tryParseDate(str: string): string | null {
   return null;
 }
 
-function extractDate(text: string): string | null {
-  return tryParseDate(text);
-}
-
 function resolveCategory(rawCategory: string | null, fullText: string): TxCategory {
-  // 1. Try exact match against our list
   if (rawCategory) {
     const exact = VALID_CATEGORIES.find(
       (c) => c.toLowerCase() === rawCategory.toLowerCase()
     );
     if (exact) return exact;
   }
-
-  // 2. Try keyword match on full text (+ rawCategory)
   const haystack = (fullText + " " + (rawCategory || "")).toLowerCase();
-  for (const [cat, keywords] of Object.entries(CATEGORY_KEYWORDS) as [TxCategory, string[]][]) {
+  for (const cat of VALID_CATEGORIES) {
     if (cat === "Other") continue;
-    if (keywords.some((kw) => haystack.includes(kw))) return cat;
+    if (CATEGORY_KEYWORDS[cat].some((kw) => haystack.includes(kw))) return cat;
   }
-
   return "Other";
 }
