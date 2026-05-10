@@ -196,6 +196,4 @@ There is no admin UI for first setup. After registering normally, update your us
 
 ---
 
-## Git Commit Guide
 
-See `COMMITS.md` for the recommended staged commit sequence.
